@@ -1,0 +1,281 @@
+---
+output: html_document
+---
+
+## Supplementary Code for paper titled "Analysis of an ordinal endpoint for use in evaluating treatments for severe influenza requiring hospitalization"
+
+## Ross Peterson
+
+# Software packages required for this code.
+
+```{r}
+library(rootSolve)
+library(MASS)
+```
+
+# Factor 1: Treatment Effect
+
+### Functions necessary for deriving experimental groups that deviate from proportional odds while maintaining the same overall log odds ratio (i.e., the treatment effect).
+```{r}
+# Given a vector of guesses for estimating the parameter values of the proportional odds model (gs), a placebo group (plac_prob), and an experimental group (exp_prob), returns the values of the partial derivatives of the expected score functions.
+paramfnGen = function(gs,plac_prob,exp_prob){
+  lvs = length(plac_prob)
+  store = NULL
+  dgpen = 0
+  dgind2 = 0
+  dgult = 0
+  
+  dg1 = 
+    1/(exp(gs[1]) + 1) * plac_prob[1] + 
+    (exp(gs[1])*(exp(gs[2]) + 1))/((exp(gs[1]) + 1)*(exp(gs[1]) - exp(gs[2]))) * plac_prob[2] + 
+    1/(exp(gs[1] + gs[lvs]) + 1) * exp_prob[1] +
+    (exp(gs[1])*(exp(gs[2] + gs[lvs]) + 1))/((exp(gs[1] + gs[lvs]) + 1)*(exp(gs[1]) - exp(gs[2]))) * exp_prob[2]
+  
+  if(lvs > 3){
+    for(i in 1:(lvs - 3)){
+      dgx = 
+        (exp(gs[i+1])*(exp(gs[i]) + 1))/((exp(gs[i+1]) + 1)*(exp(gs[i+1]) - exp(gs[i]))) * plac_prob[i+1] + 
+        (exp(gs[i+1])*(exp(gs[i+2]) + 1))/((exp(gs[i+1]) + 1)*(exp(gs[i+1]) - exp(gs[i+2]))) * plac_prob[i+2] +
+        (exp(gs[i+1])*(exp(gs[i] + gs[lvs]) + 1))/((exp(gs[i+1] + gs[lvs]) + 1)*(exp(gs[i+1]) - exp(gs[i]))) * exp_prob[i+1] +
+        (exp(gs[i+1])*(exp(gs[i+2] + gs[lvs]) + 1))/((exp(gs[i+1] + gs[lvs]) + 1)*(exp(gs[i+1]) - exp(gs[i+2]))) * exp_prob[i+2]
+      
+      store = c(store, dgx)
+      }
+    }
+    
+  for(i in 1:(lvs - 2)){
+  dgind = 
+    exp(gs[lvs-1])/(exp(gs[lvs-1]) + 1) * plac_prob[i] +
+    exp(gs[lvs-1] + gs[lvs])/(exp(gs[lvs-1] + gs[lvs]) + 1) * exp_prob[i]
+    dgpen = dgpen + dgind
+    }
+  dgpen = dgpen + 
+    exp(gs[lvs-1])/(exp(gs[lvs-1]) - exp(gs[lvs-2])) * plac_prob[lvs-1] - exp(gs[lvs-1])/(exp(gs[lvs-1]) + 1) + 
+    exp(gs[lvs-1])/(exp(gs[lvs-1]) - exp(gs[lvs-2])) * exp_prob[lvs-1] - exp(gs[lvs-1] + gs[lvs])/(exp(gs[lvs-1] + gs[lvs]) + 1)
+  
+  dgult =
+    (1/(exp(gs[1] + gs[lvs]) + 1) - 1/(exp(gs[lvs-1] + gs[lvs]) + 1) + 1) * exp_prob[1]
+
+  if(lvs > 3){
+    for(i in 1:(lvs - 3)){
+        dgind2 = dgind2 + (1/(exp(gs[i] + gs[lvs]) + 1) + 1/(exp(gs[i+1] + gs[lvs]) + 1) - 1/(exp(gs[lvs - 1] + gs[lvs]) + 1)) * exp_prob[i + 1]
+      }
+  }
+  dgult = dgult + dgind2 + 1/(exp(gs[lvs - 2] + gs[lvs]) + 1) * exp_prob[lvs - 1] - exp(gs[lvs-1] + gs[lvs])/(exp(gs[lvs-1] + gs[lvs]) + 1)
+  
+  return(c(dg1, store, dgpen, dgult))
+}
+
+# Given a placebo group (plac_prob) and sequence of log odds ratios for binary splits of the ordinal outcome from left to right (logOR), returns the corresponding experimental group. With this function, differing log odds ratios implies that proportional odds does not hold.
+propfunbin = function(plac_prob, logORs){
+  len = length(plac_prob)
+  cVals = cumsum(plac_prob)
+  cexp = cVals[1:(len - 1)]/(cVals[1:(len - 1)] + (1 - cVals[1:(len - 1)])*exp(logORs[1:(len - 1)]))
+  pexp = rep(0,len)
+  pexp = c(cexp[1],cexp[2:len] - cexp[1:(len - 1)])
+  pexp[6] = 1 - sum(pexp[1:5])
+  return(pexp)
+}
+
+# Given a placebo group (plac_prob), an intercept for the first binary split of the ordinal outcome from left to right (int), and a slope for constant decreases in successive splits of the ordinal outcome (sl), returns the log odds ratios that correspond to each binary split of the ordinal outcome.
+log_ORs_fun = function(plac_prob,int,sl){
+  len = length(plac_prob)
+  intVec = c(rep(int,len-1))
+  cVec = seq(0,-(len-2),-1) * sl
+  log_ORs = intVec + cVec
+  return(log_ORs)
+}
+
+# Given an intercept for the first binary split of the ordinal outcome from left to right (int), a slope for constant decreases in successive splits of the ordinal outcome (sl), a placebo group (p_prob), a desired average log odds ratio (logOR_want), and a vector of guesses for the parameter estimates of the proportional odds model (guesses), returns the difference between the desired average log odds ratio and the one produced by the placebo group and derived experimental group. Calls propfunbin, multiroot (package function), and paramfnGen.
+new_trt_probSlope = function(int, sl, p_prob, logOR_want,guesses){
+  len = length(p_prob)
+  e_prob = propfunbin(p_prob,log_ORs_fun(p_prob,int,sl))
+  calc_log_OR = multiroot(paramfnGen,guesses,plac_prob = p_prob, exp_prob = e_prob)$root[len]
+  diff = logOR_want - calc_log_OR
+  return(diff)
+}
+
+# Given a constant log odds ratio for the all but the last binary split of the ordinal outcome from left to right (logOR_const), a placebo group (p_prob), a desired average log odds ratio (logOR_want), and a vector of guesses for the parameter estimates of the proportional odds model (guesses), returns the difference between the desired average log odds ratio and the one produced by the placebo group and derived experimental group. Assumes no treatment effect for the last binary split of the ordinal outcome. Calls propfunbin, multiroot (package function), and paramfnGen.
+new_trt_probAvg1 = function(logOR_const, p_prob, logOR_want,guesses){
+  len = length(p_prob)
+  e_prob = propfunbin(p_prob, c(rep(logOR_const,len - 2),0))
+  calc_log_OR = multiroot(paramfnGen,guesses,plac_prob = p_prob, exp_prob = e_prob)$root[len]
+  diff = logOR_want - calc_log_OR
+  return(diff)
+}
+
+# Given a log odds ratio for the last binary split of the ordinal outcome from left to right (logOR_single), a placebo group (p_prob), a desired average log odds ratio (logOR_want), and a vector of guesses for the parameter estimates of the proportional odds model (guesses), returns the difference between the desired average log odds ratio and the one produced by the placebo group and derived experimental group. Assumes no treatment effect for all but the last binary split of the ordinal outcome. Calls propfunbin, multiroot (package function), and paramfnGen.
+new_trt_probAvg2 = function(logOR_single, p_prob, logOR_want,guesses){
+  len = length(p_prob)
+  e_prob = propfunbin(p_prob, c(rep(0,len - 2),logOR_single))
+  calc_log_OR = multiroot(paramfnGen,guesses,plac_prob = p_prob, exp_prob = e_prob)$root[len]
+  diff = logOR_want - calc_log_OR
+  return(diff)
+}
+```
+
+### Derivation of treatment effect scenario T0-P0-M0-C0 (i.e., proportional odds holds).
+```{r}
+# Given a placebo group (plac_prob) and average log odds ratio (avglogOR), returns the corresponding experimental group assuming proportional odds holds.
+propfunconst = function(plac_prob, avglogOR){
+  len = length(plac_prob)
+  cVals = cumsum(plac_prob)
+  cexp = cVals/(cVals + (1 - cVals)*exp(avglogOR))
+  pexp = c(cexp[1],cexp[2:len] - cexp[1:(len - 1)])
+  return(pexp)
+}
+
+placebo = c(.012,.053,.162,.144,0.364,0.265) # Placebo group from FLU-003
+experimental = propfunconst(plac_prob = placebo, avglogOR = log(1.77))
+print(round(experimental,3) * 100)
+```
+
+### Demonstration of new_trt_probSlope for deriving treatment effect scenario T1-P0-M0-C0.
+```{r}
+placebo = c(0.012,0.053,0.162,0.144,0.364,0.265)
+len = length(placebo)
+avglogOR = log(1.77)
+guesses = c(-4.4107760,-2.6661592,-1.2253290,-0.5279292,1.0201407,-0.5709795)
+
+intercept = 2.6
+slope = uniroot(f = new_trt_probSlope,interval = c(0,1), int = intercept, p_prob = placebo, logOR_want = -avglogOR,guesses)$root
+
+experimental = propfunbin(placebo,log_ORs_fun(placebo,int = intercept,sl = slope))
+print(round(experimental,3) * 100)
+```
+
+### Demonstration of new_trt_probAvg1 for deriving treatment effect scenario T2-P0-M0-C0.
+```{r}
+logOR_const = uniroot(f = new_trt_probAvg1, interval = c(0,5), p_prob = placebo, logOR_want = -avglogOR,guesses)$root
+experimental = propfunbin(placebo,c(rep(logOR_const,4),0))
+print(round(experimental,3) * 100)
+```
+
+### Demonstration of new_trt_probAvg2 for deriving treatment effect scenario T3-P0-M0-C0.
+```{r}
+logOR_const = uniroot(f = new_trt_probAvg2, interval = c(0,1.5), p_prob = placebo, logOR_want = -avglogOR,guesses)$root
+experimental = propfunbin(placebo,c(rep(0,4),logOR_const))
+print(round(experimental,3) * 100)
+```
+
+### Derivations of treatment effect scenarios T4-P0-M0-C0 and T5-P0-M0-C0.
+```{r}
+experimental = propfunbin(placebo,c(rep(avglogOR,len-2),0))
+print(round(experimental,3) * 100)
+
+experimental = propfunbin(placebo,c(rep(0,4),avglogOR))
+print(round(experimental,3) * 100)
+```
+
+# Factor 2: Distribution of the placebo group
+```{r}
+# The expit function. Given a log odds ratio (x), returns the corresponding category probability.
+expit = function(x){exp(x)/(1+exp(x))}
+
+# Given the cumulative log odds ratios from the proportional odds model (x), returns the distribution of the placebo group. Calls the expit function.
+invlog = function(x){
+  len = length(x)
+  p = rep(NA,len)
+  p[1] = expit(x[1])
+  for(i in 2:(len-1)){
+    p[i] = expit(x[i]) - expit(x[i - 1])
+  }
+  p[len] = 1 - sum(p[1:(len-1)])
+  return(p)
+}
+
+# Deriving T0-P1-M0-C0, a placebo group which is less skewed. Consequently, the experimental group is less skewed as well.
+placebo = c(.012,.053,.162,.144,0.364,0.265)
+experimental = c(0.007,0.031,0.105,0.107,0.36,0.39) 
+cum_log = multiroot(paramfnGen,guesses,plac_prob = placebo,exp_prob = experimental)$root
+placeboP1 = invlog(cum_log + 0.5)
+print(round(placeboP1,3)*100)
+experimentalP1 = propfunconst(plac_prob = placeboP1, avglogOR = log(1.77))
+print(round(experimentalP1,3) * 100)
+multiroot(paramfnGen,guesses,plac_prob = placeboP1,exp_prob = experimentalP1)$root # Cumulative log odds ratios provided under row P1 of Supplemental Table 3.
+
+# Deriving T0-P3-M0-C0, a placebo group which is less skewed. Consequently, the experimental group is less skewed as well.
+placeboP3 = invlog(cum_log - 0.5)
+print(round(placeboP3,3)*100)
+experimentalP3 = propfunconst(plac_prob = placeboP3, avglogOR = log(1.77))
+print(round(experimentalP3,3) * 100)
+multiroot(paramfnGen,guesses,plac_prob = placeboP3,exp_prob = experimentalP3)$root # Cumulative log odds ratios provided under row P3 of Supplemental Table 3.
+```
+
+# Factor 3: Misclassification between adjacent pairs of categories.
+```{r}
+# Given percentages of misclassification between two different adjacent pairs of categories (m and g respectively), a placebo group (plac_prob), and an experimental group (exp_prob), returns the corresponding distributions of the placebo group and experimental group with misclassification added between the 3rd and 4th categories, as well as the 5th and 6th categories.
+misclassfun = function(m,g,plac_prob,exp_prob){
+  t = 1 - m
+  v = 1 - g
+  p_probm = c(plac_prob[1:2],plac_prob[3]*t+plac_prob[4]*m,plac_prob[4]*t+plac_prob[3]*m,
+              plac_prob[5]*v+plac_prob[6]*g,plac_prob[6]*v+plac_prob[5]*g)
+  e_probm = c(exp_prob[1:2],exp_prob[3]*t+exp_prob[4]*m,exp_prob[4]*t+exp_prob[3]*m,
+              exp_prob[5]*v+exp_prob[6]*g,exp_prob[6]*v+exp_prob[5]*g)
+  return(list(p_probm = p_probm, e_probm = e_probm))
+}
+
+### Derivation of T0-P0-M1-C0
+placebo = c(.012,.053,.162,.144,0.364,0.265)
+experimental = c(0.007,0.031,0.105,0.108,0.36,0.39)
+
+placeboM1 = misclassfun(.2,.2,placebo,experimental)$p_probm
+experimentalM1 = misclassfun(.2,.2,placebo,experimental)$e_probm
+
+print(round(placeboM1,3)*100)
+print(round(experimentalM1,3)*100)
+```
+
+# Simulation code
+```{r}
+n = 320 # The number of patients in each random sample.
+S = 10000 # The number of simulated trials
+
+# Given a placebo group (plac_prob) and experimental group (exp_prob), returns the estimated power from the proportional odds model for concluding a treatment effect.
+simFunprop = function(plac_prob,exp_prob){
+  cat.num = length(plac_prob)
+  for(i in 1:S) {
+    placebo_data <- sample(1:cat.num, n/2, plac_prob, replace = TRUE)
+    exp_data <- sample(1:cat.num, n/2, exp_prob, replace = TRUE)
+    exp <- c(rep(1, n/2), rep(0, n/2))
+    comb = c(exp_data, placebo_data)
+    outcome <- factor(comb, levels = 1:cat.num)    
+    t1 <-  polr(outcome ~ exp,Hess=TRUE)
+    trt_coef <- summary(t1)$coef[1,]
+    trt_results <- rbind(trt_results, trt_coef)
+    if(i %% 1000 == 0) {print(i)}
+  }
+  return(cat("Power:", mean(trt_results[,3] > qnorm(0.975))))
+}
+
+# Uncomment code to run simulation to derive power for treatment effect scenario T1-P0-M0-C0.
+placebo = c(.012,.053,.162,.144,0.364,0.265)
+experimental = c(0.0009012952,0.0084303357,0.0583442547,0.1424176762,0.4851814006,0.3047250377)
+trt_results = NULL
+set.seed(292015) # The date I was admitted to grad school! Yay!
+# simFunprop(placebo,experimental)
+
+# Given a placebo group collapsed into a binary outcome (plac_prob) and an experimental group collapsed into the same binary outcome (exp_bin), returns the estimated power from simple logistic regression for concluding a treatment effect.
+simFunbin = function(plac_bin,exp_bin){
+  for(i in 1:S) {
+    placebo_data <- sample(1:2, n/2, plac_bin, replace = TRUE)
+    exp_data <- sample(1:2, n/2, exp_bin, replace = TRUE)
+    exp <- c(rep(1, n/2), rep(0, n/2))
+    comb = c(exp_data, placebo_data)
+    comb = comb - 1
+    pval = summary(glm(comb ~ exp, family = binomial))$coef[8]
+    p_bin = rbind(p_bin, pval)
+    if(i %% 1000 == 0) {print(i)}
+  }
+  return(cat("Power:", mean(p_bin < 0.05)))
+}
+
+# Uncomment code to run simulation to derive power for treatment effect scenario T0-P0-M0-C5.
+placebo = c(.012,.053,.162,.144,0.364,0.265)
+experimental = c(0.007,0.031,0.105,0.107,0.36,0.39)
+placebo_bin = c(sum(placebo[1:4]),sum(placebo[5:6]))
+experimental_bin = c(sum(experimental[1:4]),sum(experimental[5:6]))
+p_bin = NULL
+set.seed(292015)
+# simFunbin(placebo_bin,experimental_bin)
+```
