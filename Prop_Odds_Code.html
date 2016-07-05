@@ -357,15 +357,35 @@ simFunprop = function(plac_prob,exp_prob){
     t1 &lt;-  polr(outcome ~ exp,Hess=TRUE)
     trt_coef &lt;- summary(t1)$coef[1,]
     trt_results &lt;- rbind(trt_results, trt_coef)
+    
+    z = NULL
+    v = NULL
+    for(j in 1:cat.num){
+      z = c(z,length(grep(j,placebo_data))) # Store the number of 1's, 2's, etc. in placebo
+      v = c(v,length(grep(j,exp_data)))
+    }
+    
+    mod_logLik = logLik(t1)
+    p1 = z[1:cat.num]/160
+    p2 = v[1:cat.num]/160
+    p1_log = ifelse(log(p1) == -Inf, 0,log(p1)) # In case a sample has no 1's, 2's, etc.
+    p2_log = ifelse(log(p2) == -Inf, 0,log(p2))
+    null_logLik = sum(z * p1_log) + sum(v * p2_log)
+    test_stat = 2 * (null_logLik - mod_logLik)
+    new_p_LRT = 1 - pchisq(test_stat[1], 4) # p-value from likelihood ratio test
+    p_LRT = c(p_LRT, new_p_LRT)
+    
     if(i %% 1000 == 0) {print(i)}
   }
-  return(cat(&quot;Power:&quot;, mean(trt_results[,3] &gt; qnorm(0.975))))
+  cat(&quot;Power:&quot;, mean(trt_results[,3] &gt; qnorm(0.975)), &quot;\n&quot;)
+  cat(&quot;Avg. p-value for test of proportional odds assumption:&quot;, mean(p_LRT))
 }
 
-# Uncomment code to run simulation to derive power for treatment effect scenario T1-P0-M0-C0.
+# Uncomment code to run simulation for treatment effect scenario T1-P0-M0-C0.
 placebo = c(.012,.053,.162,.144,0.364,0.265)
 experimental = c(0.0009012952,0.0084303357,0.0583442547,0.1424176762,0.4851814006,0.3047250377)
 trt_results = NULL
+p_LRT = NULL
 set.seed(292015) # The date I was admitted to grad school! Yay!
 # simFunprop(placebo,experimental)
 
