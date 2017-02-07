@@ -187,7 +187,7 @@ invlog = function(x){
 # Deriving T0-P1-M0-C0, a placebo group which is less skewed. Consequently, the experimental group is less skewed as well.
 placebo = c(.012,.053,.162,.144,0.364,0.265)
 experimental = c(0.007,0.031,0.105,0.107,0.36,0.39) 
-cum_log = multiroot(paramfnGen,guesses,plac_prob = placebo,exp_prob = experimental)$root
+cum_log = log(cumsum(placebo)/(1-cumsum(placebo)))
 placeboP1 = invlog(cum_log + 0.5)
 print(round(placeboP1,3)*100)
 experimentalP1 = propfunconst(plac_prob = placeboP1, avglogOR = log(1.77))
