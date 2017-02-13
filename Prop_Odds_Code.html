@@ -310,17 +310,17 @@ print(round(placeboP1,3)*100)</code></pre>
 <pre class="r"><code>experimentalP1 = propfunconst(plac_prob = placeboP1, avglogOR = log(1.77))
 print(round(experimentalP1,3) * 100)</code></pre>
 <pre><code>## [1]  1.1  5.0 15.4 14.0 36.6 27.9</code></pre>
-<pre class="r"><code>multiroot(paramfnGen,guesses,plac_prob = placeboP1,exp_prob = experimentalP1)$root # Cumulative log odds ratios provided under row P1 of Supplemental Table 3.</code></pre>
-<pre><code>## [1] -3.91077605 -2.16615926 -0.72532903 -0.02792919  1.52014067 -0.57097955</code></pre>
-<pre class="r"><code># Deriving T0-P3-M0-C0, a placebo group which is less skewed. Consequently, the experimental group is less skewed as well.
+<pre class="r"><code>cum_log[1:5] + 0.5 # Cumulative log odds ratios provided under row P1 of Supplemental Table 3.</code></pre>
+<pre><code>## [1] -3.91077605 -2.16615926 -0.72532903 -0.02792919  1.52014067</code></pre>
+<pre class="r"><code># Deriving T0-P3-M0-C0, a placebo group which is more skewed. Consequently, the experimental group is more skewed as well.
 placeboP3 = invlog(cum_log - 0.5)
 print(round(placeboP3,3)*100)</code></pre>
 <pre><code>## [1]  0.7  3.3 11.1 11.2 36.4 37.3</code></pre>
 <pre class="r"><code>experimentalP3 = propfunconst(plac_prob = placeboP3, avglogOR = log(1.77))
 print(round(experimentalP3,3) * 100)</code></pre>
 <pre><code>## [1]  0.4  1.9  6.8  7.7 31.9 51.3</code></pre>
-<pre class="r"><code>multiroot(paramfnGen,guesses,plac_prob = placeboP3,exp_prob = experimentalP3)$root # Cumulative log odds ratios provided under row P3 of Supplemental Table 3.</code></pre>
-<pre><code>## [1] -4.9107759 -3.1661591 -1.7253289 -1.0279290  0.5201406 -0.5709795</code></pre>
+<pre class="r"><code>cum_log[1:5] - 0.5 # Cumulative log odds ratios provided under row P3 of Supplemental Table 3.</code></pre>
+<pre><code>## [1] -4.9107760 -3.1661593 -1.7253290 -1.0279292  0.5201407</code></pre>
 </div>
 <div id="factor-3-misclassification-between-adjacent-pairs-of-categories." class="section level1">
 <h1>Factor 3: Misclassification between adjacent pairs of categories.</h1>

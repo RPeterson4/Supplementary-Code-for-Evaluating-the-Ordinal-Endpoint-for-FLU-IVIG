@@ -192,14 +192,14 @@ placeboP1 = invlog(cum_log + 0.5)
 print(round(placeboP1,3)*100)
 experimentalP1 = propfunconst(plac_prob = placeboP1, avglogOR = log(1.77))
 print(round(experimentalP1,3) * 100)
-multiroot(paramfnGen,guesses,plac_prob = placeboP1,exp_prob = experimentalP1)$root # Cumulative log odds ratios provided under row P1 of Supplemental Table 3.
+cum_log[1:5] + 0.5 # Cumulative log odds ratios provided under row P1 of Supplemental Table 3.
 
-# Deriving T0-P3-M0-C0, a placebo group which is less skewed. Consequently, the experimental group is less skewed as well.
+# Deriving T0-P3-M0-C0, a placebo group which is more skewed. Consequently, the experimental group is more skewed as well.
 placeboP3 = invlog(cum_log - 0.5)
 print(round(placeboP3,3)*100)
 experimentalP3 = propfunconst(plac_prob = placeboP3, avglogOR = log(1.77))
 print(round(experimentalP3,3) * 100)
-multiroot(paramfnGen,guesses,plac_prob = placeboP3,exp_prob = experimentalP3)$root # Cumulative log odds ratios provided under row P3 of Supplemental Table 3.
+cum_log[1:5] - 0.5 # Cumulative log odds ratios provided under row P3 of Supplemental Table 3.
 ```
 
 # Factor 3: Misclassification between adjacent pairs of categories.
